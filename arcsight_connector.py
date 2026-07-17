@@ -1,25 +1,25 @@
 # File: arcsight_connector.py
-# Copyright (c) 2017-2021 Splunk Inc.
+# Copyright (c) 2017-2026 Splunk Inc.
 #
 # Licensed under Apache 2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
 #
 
 # Phantom imports
-import phantom.app as phantom
+import json
+import re
+import socket
+import struct
+from datetime import datetime
 
-from phantom.base_connector import BaseConnector
+import phantom.app as phantom
+import requests
+from bs4 import BeautifulSoup
 from phantom.action_result import ActionResult
+from phantom.base_connector import BaseConnector
 
 # THIS Connector imports
 from arcsight_consts import *
 
-from datetime import datetime
-import requests
-import re
-import socket
-import struct
-from bs4 import BeautifulSoup
-import json
 
 _container_common = {}
 _artifact_common = {}
@@ -28,17 +28,18 @@ _artifact_common = {}
 def _validate_range(input_range, action_result):
 
     try:
-        mini, maxi = (int(x) for x in input_range.split('-'))
+        mini, maxi = (int(x) for x in input_range.split("-"))
     except:
-        return action_result.set_status(phantom.APP_ERROR,
-                                        "Unable to parse the range. Please specify the range as min_offset-max_offset")
+        return action_result.set_status(phantom.APP_ERROR, "Unable to parse the range. Please specify the range as min_offset-max_offset")
 
     if (mini < 0) or (maxi < 0):
-        return action_result.set_status(phantom.APP_ERROR, "Invalid min or max offset value specified in range", )
+        return action_result.set_status(
+            phantom.APP_ERROR,
+            "Invalid min or max offset value specified in range",
+        )
 
     if mini > maxi:
-        return action_result.set_status(phantom.APP_ERROR,
-                                        "Invalid range value, min_offset greater than max_offset")
+        return action_result.set_status(phantom.APP_ERROR, "Invalid range value, min_offset greater than max_offset")
 
     return phantom.APP_SUCCESS
 
@@ -46,42 +47,42 @@ def _validate_range(input_range, action_result):
 def _to_mac(input_mac):
 
     if not input_mac:
-        return ''
+        return ""
 
     input_mac = int(input_mac)
 
     if input_mac == ARCSIGHT_64VAL_NOT_FILLED:
-        return ''
+        return ""
 
-    hex_str = "%x" % input_mac
+    hex_str = f"{input_mac:x}"
 
     hex_str = hex_str[:12]
 
-    return ':'.join(s.encode('hex') for s in hex_str.decode('hex'))
+    return ":".join(s.encode("hex") for s in hex_str.decode("hex"))
 
 
 def _to_ip(input_ip):
 
     if not input_ip:
-        return ''
+        return ""
 
     input_ip = int(input_ip)
 
     if input_ip == ARCSIGHT_64VAL_NOT_FILLED:
-        return ''
+        return ""
 
-    return socket.inet_ntoa(struct.pack('!L', input_ip))
+    return socket.inet_ntoa(struct.pack("!L", input_ip))
 
 
 def _to_port(port):
 
     if not port:
-        return ''
+        return ""
 
     port = int(port)
 
     if port == ARCSIGHT_32VAL_NOT_FILLED:
-        return ''
+        return ""
 
     return port
 
@@ -89,13 +90,13 @@ def _to_port(port):
 def _get_str_from_epoch(epoch_milli):
 
     if epoch_milli is None:
-        return ''
+        return ""
 
     if not str(epoch_milli).strip():
-        return ''
+        return ""
 
     # 2015-07-21T00:27:59Z
-    return datetime.fromtimestamp(int(epoch_milli) / 1000.0).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    return datetime.fromtimestamp(int(epoch_milli) / 1000.0).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def _parse_error(response):
@@ -104,17 +105,17 @@ def _parse_error(response):
     description = None
     try:
         soup = BeautifulSoup(response.text, "html.parser")
-        pres = soup.findAll('pre')
-        error_text = '\r\n'.join([str(x) for x in pres])
+        pres = soup.findAll("pre")
+        error_text = "\r\n".join([str(x) for x in pres])
     except:
         error_text = "Cannot parse error details"
 
     # Try to parse description
     try:
-        for paragraph in soup.find_all('p'):
-            description_tag = paragraph.find_all('b')
-            if description_tag and description_tag[0].text == 'description':
-                description = paragraph.find_all('u')[0].text
+        for paragraph in soup.find_all("p"):
+            description_tag = paragraph.find_all("b")
+            if description_tag and description_tag[0].text == "description":
+                description = paragraph.find_all("u")[0].text
                 break
     except:
         pass
@@ -122,42 +123,41 @@ def _parse_error(response):
     # Try to parse some more
     try:
         if pres:
-            error_text = str(pres[0]).split('\n')[0].replace('<pre>', '')
+            error_text = str(pres[0]).split("\n")[0].replace("<pre>", "")
     except:
         pass
 
     if error_text and description:
-        message = f'API failed. Status Code: {response.status_code}. Error Description: {description} Error Details: {error_text}'
+        message = f"API failed. Status Code: {response.status_code}. Error Description: {description} Error Details: {error_text}"
     elif error_text:
-        message = f'API failed. Status Code: {response.status_code}. Error Details: {error_text}'
+        message = f"API failed. Status Code: {response.status_code}. Error Details: {error_text}"
     elif description:
-        message = f'API failed. Status Code: {response.status_code}. Error Description: {description}'
+        message = f"API failed. Status Code: {response.status_code}. Error Description: {description}"
     else:
         try:
             # Remove the script, style, footer and navigation part from the HTML message
             for element in soup(["script", "style", "footer", "nav"]):
                 element.extract()
             error_text = soup.text
-            split_lines = error_text.split('\n')
+            split_lines = error_text.split("\n")
             split_lines = [x.strip() for x in split_lines if x.strip()]
-            error_text = '\n'.join(split_lines)
+            error_text = "\n".join(split_lines)
         except:
             error_text = "Cannot parse error details"
 
         if not error_text:
             error_text = "Empty response and no information received"
         message = f"API failed. Status Code: {response.status_code}. Error Details: {error_text}"
-        message = message.replace('{', '{{').replace('}', '}}')
+        message = message.replace("{", "{{").replace("}", "}}")
 
     return message
 
 
 class ArcsightConnector(BaseConnector):
-
     def __init__(self):
 
         # Call the BaseConnectors init first
-        super(ArcsightConnector, self).__init__()
+        super().__init__()
 
         self._base_url = None
         self._auth_token = None
@@ -167,7 +167,7 @@ class ArcsightConnector(BaseConnector):
         # Base URL
         config = self.get_config()
 
-        self._base_url = config[ARCSIGHT_JSON_BASE_URL].rstrip('/')
+        self._base_url = config[ARCSIGHT_JSON_BASE_URL].rstrip("/")
 
         return phantom.APP_SUCCESS
 
@@ -194,9 +194,9 @@ class ArcsightConnector(BaseConnector):
 
         try:
             if error_code in ERR_CODE_MSG:
-                error_text = "Error Message: {}".format(error_msg)
+                error_text = f"Error Message: {error_msg}"
             else:
-                error_text = "Error Code: {}. Error Message: {}".format(error_code, error_msg)
+                error_text = f"Error Code: {error_code}. Error Message: {error_msg}"
         except:
             self.debug_print(PARSE_ERR_MSG)
             error_text = PARSE_ERR_MSG
@@ -213,12 +213,12 @@ class ArcsightConnector(BaseConnector):
             return action_result.get_status()
 
         # get the version of the device
-        device_version = version.get('cas.getESMVersionResponse', {}).get('cas.return')
+        device_version = version.get("cas.getESMVersionResponse", {}).get("cas.return")
 
         if not device_version:
             return action_result.set_status(phantom.APP_ERROR, "Unable to get version from the device")
 
-        self.save_progress("Got device version: {0}".format(device_version))
+        self.save_progress(f"Got device version: {device_version}")
 
         # get the configured version regex
         version_regex = self.get_product_version_regex()
@@ -229,7 +229,7 @@ class ArcsightConnector(BaseConnector):
         match = re.match(version_regex, device_version)
 
         if not match:
-            message = "Version validation failed for App supported version '{0}'".format(version_regex)
+            message = f"Version validation failed for App supported version '{version_regex}'"
             return action_result.set_status(phantom.APP_ERROR, message)
 
         self.save_progress("Version validation done")
@@ -243,10 +243,9 @@ class ArcsightConnector(BaseConnector):
 
         config = self.get_config()
 
-        self.save_progress('Logging into device/server')
+        self.save_progress("Logging into device/server")
 
-        request_data = {
-            "log.login": {"log.login": config[ARCSIGHT_JSON_USERNAME], "log.password": config[ARCSIGHT_JSON_PASSWORD]}}
+        request_data = {"log.login": {"log.login": config[ARCSIGHT_JSON_USERNAME], "log.password": config[ARCSIGHT_JSON_PASSWORD]}}
 
         ret_val, resp = self._make_rest_call(ACRSIGHT_LOGIN_ENDPOINT, action_result, json=request_data, method="post")
 
@@ -255,7 +254,7 @@ class ArcsightConnector(BaseConnector):
 
         # parse the response and set the auth key
         try:
-            self._auth_token = resp['log.loginResponse']['log.return']
+            self._auth_token = resp["log.loginResponse"]["log.return"]
         except Exception as e:
             error_msg = self._get_error_message_from_exception(e)
             self.debug_print(f"Handled exception while parsing auth token. {error_msg}")
@@ -270,9 +269,9 @@ class ArcsightConnector(BaseConnector):
 
     def _get_version(self, action_result):
 
-        endpoint = "{0}/getESMVersion".format(ARCSIGHT_CASESERVICE_ENDPOINT)
+        endpoint = f"{ARCSIGHT_CASESERVICE_ENDPOINT}/getESMVersion"
 
-        params = {'authToken': self._auth_token}
+        params = {"authToken": self._auth_token}
 
         ret_val, resp = self._make_rest_call(endpoint, action_result, params)
 
@@ -292,18 +291,17 @@ class ArcsightConnector(BaseConnector):
         if not request_func:
             action_result.set_status(phantom.APP_ERROR, ARCSIGHT_ERR_API_UNSUPPORTED_METHOD, method=method)
 
-        url = f'{self._base_url}{endpoint}'
+        url = f"{self._base_url}{endpoint}"
 
-        self.debug_print("Making REST Call {0} on {1}".format(method.upper(), url))
+        self.debug_print(f"Making REST Call {method.upper()} on {url}")
 
-        _headers = {'Accept': 'application/json'}
+        _headers = {"Accept": "application/json"}
 
         if headers:
             _headers.update(headers)
 
         try:
-            response = request_func(url, params=params, data=data, json=json, headers=_headers,
-                                    verify=config[phantom.APP_JSON_VERIFY])
+            response = request_func(url, params=params, data=data, json=json, headers=_headers, verify=config[phantom.APP_JSON_VERIFY])
 
         except requests.exceptions.ConnectionError as e:
             self.debug_print(self._get_error_message_from_exception(e))
@@ -314,7 +312,7 @@ class ArcsightConnector(BaseConnector):
             self.debug_print(f"REST call Failed: {error_msg}")
             return action_result.set_status(phantom.APP_ERROR, f"{ARCSIGHT_ERR_SERVER_CONNECTION}. {error_msg}"), None
 
-        if (response.status_code != requests.codes.ok) or ('html' in response.headers.get('Content-Type', '')):  # pylint: disable=E1101
+        if (response.status_code != requests.codes.ok) or ("html" in response.headers.get("Content-Type", "")):  # pylint: disable=E1101
             message = _parse_error(response)
             self.debug_print(message)
             return action_result.set_status(phantom.APP_ERROR, message), None
@@ -350,18 +348,14 @@ class ArcsightConnector(BaseConnector):
 
     def _get_events_details(self, event_ids, action_result):
 
-        endpoint = "{0}/getSecurityEvents".format(ARCSIGHT_SECURITYEVENTSERVICE_ENDPOINT)
+        endpoint = f"{ARCSIGHT_SECURITYEVENTSERVICE_ENDPOINT}/getSecurityEvents"
 
         # params = {'authToken': self._auth_token, 'ids': event_id, 'startMillis': '-1', 'endMillis': '-1'}
         request_data = {
-            "sev.getSecurityEvents": {
-                "sev.authToken": self._auth_token,
-                "sev.ids": event_ids,
-                "sev.startMillis": "-1",
-                "sev.endMillis": "-1"}}
+            "sev.getSecurityEvents": {"sev.authToken": self._auth_token, "sev.ids": event_ids, "sev.startMillis": "-1", "sev.endMillis": "-1"}
+        }
 
-        ret_val, resp = self._make_rest_call(endpoint, action_result, params=None, data=None, json=request_data,
-                                             headers=None, method="post")
+        ret_val, resp = self._make_rest_call(endpoint, action_result, params=None, data=None, json=request_data, headers=None, method="post")
 
         if phantom.is_fail(ret_val):
             return phantom.APP_ERROR, None
@@ -370,7 +364,7 @@ class ArcsightConnector(BaseConnector):
         self.debug_print(resp)
 
         try:
-            events_details = resp.get('sev.getSecurityEventsResponse', {}).get('sev.return', {})
+            events_details = resp.get("sev.getSecurityEventsResponse", {}).get("sev.return", {})
         except:
             events_details = {}
 
@@ -378,9 +372,9 @@ class ArcsightConnector(BaseConnector):
 
     def _get_case_details(self, case_id, action_result):
 
-        endpoint = "{0}/getResourceById".format(ARCSIGHT_CASESERVICE_ENDPOINT)
+        endpoint = f"{ARCSIGHT_CASESERVICE_ENDPOINT}/getResourceById"
 
-        params = {'authToken': self._auth_token, 'resourceId': case_id}
+        params = {"authToken": self._auth_token, "resourceId": case_id}
 
         ret_val, resp = self._make_rest_call(endpoint, action_result, params)
 
@@ -390,7 +384,7 @@ class ArcsightConnector(BaseConnector):
         # parse the response and get the ids of all the cases
         self.debug_print(resp)
         try:
-            case_details = resp.get('cas.getResourceByIdResponse', {}).get('cas.return', {})
+            case_details = resp.get("cas.getResourceByIdResponse", {}).get("cas.return", {})
         except:
             case_details = {}
 
@@ -398,9 +392,9 @@ class ArcsightConnector(BaseConnector):
 
     def _get_all_case_ids(self, param, action_result):
 
-        endpoint = "{0}/findAllIds".format(ARCSIGHT_CASESERVICE_ENDPOINT)
+        endpoint = f"{ARCSIGHT_CASESERVICE_ENDPOINT}/findAllIds"
 
-        params = {'authToken': self._auth_token}
+        params = {"authToken": self._auth_token}
 
         ret_val, resp = self._make_rest_call(endpoint, action_result, params)
 
@@ -411,7 +405,7 @@ class ArcsightConnector(BaseConnector):
         self.debug_print(resp)
 
         try:
-            case_ids = resp.get('cas.findAllIdsResponse', {}).get('cas.return', [])
+            case_ids = resp.get("cas.findAllIdsResponse", {}).get("cas.return", [])
         except:
             case_ids = []
 
@@ -425,29 +419,28 @@ class ArcsightConnector(BaseConnector):
         ret_val, case_details = self._get_case_details(case_id, action_result)
 
         if phantom.is_fail(ret_val):
-            self.save_progress("Ignoring Case ID: {0}, could not get details.".format(case_id))
+            self.save_progress(f"Ignoring Case ID: {case_id}, could not get details.")
             return action_result.get_status(), None, None
 
-        self.send_progress("Processing Case ID: {0}".format(case_id))
+        self.send_progress(f"Processing Case ID: {case_id}")
 
         # create a container
         container = {
-            'source_data_identifier': case_id, 'name': case_details['name'],
-            'description': case_details.get('description'),
-            'data': {
-                'case_detail': case_details
-            },
-            'start_time': _get_str_from_epoch(case_details.get('createdTimestamp'))
+            "source_data_identifier": case_id,
+            "name": case_details["name"],
+            "description": case_details.get("description"),
+            "data": {"case_detail": case_details},
+            "start_time": _get_str_from_epoch(case_details.get("createdTimestamp")),
         }
 
-        event_ids = case_details.get('eventIDs')
+        event_ids = case_details.get("eventIDs")
 
         if not event_ids:
-            self.save_progress("Ignoring Case: {0}({1}) since it has no events".format(case_details['name'], case_id))
+            self.save_progress("Ignoring Case: {}({}) since it has no events".format(case_details["name"], case_id))
             return action_result.get_status(), container, None
 
         # now get the events for this container
-        ret_val, events = self._get_case_events(case_details['eventIDs'], action_result)
+        ret_val, events = self._get_case_events(case_details["eventIDs"], action_result)
 
         if phantom.is_fail(ret_val):
             return action_result.get_status(), container, None
@@ -455,40 +448,41 @@ class ArcsightConnector(BaseConnector):
         artifacts = []
 
         for i, event in enumerate(events):
-            self.send_progress("Processing Event ID: {0}".format(event['eventId']))
+            self.send_progress("Processing Event ID: {}".format(event["eventId"]))
             artifact = {
-                'source_data_identifier': event['eventId'],
-                'name': event.get('name', 'Artifact # {0}'.format(i)), 'data': event,
-                'start_time': _get_str_from_epoch(event.get('startTime')),
-                'end_time': _get_str_from_epoch(event.get('endTime'))
+                "source_data_identifier": event["eventId"],
+                "name": event.get("name", f"Artifact # {i}"),
+                "data": event,
+                "start_time": _get_str_from_epoch(event.get("startTime")),
+                "end_time": _get_str_from_epoch(event.get("endTime")),
             }
 
             cef = {}
 
             # source details
-            source = event.get('source')
+            source = event.get("source")
             if source:
-                cef['sourceUserName'] = source.get('userName')
-                cef['sourceAddress'] = _to_ip(source.get('address'))
-                cef['sourceMacAddress'] = _to_mac(source.get('maxAddress'))
-                cef['sourcePort'] = _to_port(source.get('port'))
-                cef['sourceHostName'] = source.get('hostName')
+                cef["sourceUserName"] = source.get("userName")
+                cef["sourceAddress"] = _to_ip(source.get("address"))
+                cef["sourceMacAddress"] = _to_mac(source.get("maxAddress"))
+                cef["sourcePort"] = _to_port(source.get("port"))
+                cef["sourceHostName"] = source.get("hostName")
 
             # destination details
-            destination = event.get('destination')
+            destination = event.get("destination")
             if destination:
-                cef['destinationUserName'] = destination.get('userName')
-                cef['destinationAddress'] = _to_ip(destination.get('address'))
-                cef['destinationMacAddress'] = _to_mac(destination.get('maxAddress'))
-                cef['destinationPort'] = _to_port(destination.get('port'))
-                cef['destinationHostName'] = destination.get('hostName')
+                cef["destinationUserName"] = destination.get("userName")
+                cef["destinationAddress"] = _to_ip(destination.get("address"))
+                cef["destinationMacAddress"] = _to_mac(destination.get("maxAddress"))
+                cef["destinationPort"] = _to_port(destination.get("port"))
+                cef["destinationHostName"] = destination.get("hostName")
 
             cef = {k: v for k, v in list(cef.items()) if v}
 
             if not cef:
                 continue
 
-            artifact['cef'] = cef
+            artifact["cef"] = cef
 
             artifacts.append(artifact)
 
@@ -502,8 +496,7 @@ class ArcsightConnector(BaseConnector):
         results = results[:container_count]
 
         for i, result in enumerate(results):
-
-            container = result.get('container')
+            container = result.get("container")
 
             if not container:
                 continue
@@ -511,10 +504,9 @@ class ArcsightConnector(BaseConnector):
             container.update(_container_common)
 
             (ret_val, message, container_id) = self.save_container(container)
-            self.debug_print(
-                "save_container returns, value: {0}, reason: {1}, id: {2}".format(ret_val, message, container_id))
+            self.debug_print(f"save_container returns, value: {ret_val}, reason: {message}, id: {container_id}")
 
-            artifacts = result.get('artifacts')
+            artifacts = result.get("artifacts")
             if not artifacts:
                 continue
 
@@ -523,23 +515,20 @@ class ArcsightConnector(BaseConnector):
             len_artifacts = len(artifacts)
 
             for j, artifact in enumerate(artifacts):
-
                 if not artifact:
                     continue
 
                 # add the container id to the artifact
-                artifact['container_id'] = container_id
+                artifact["container_id"] = container_id
                 artifact.update(_artifact_common)
 
                 # if it is the last artifact of the last container
                 if (j + 1) == len_artifacts:
                     # mark it such that active playbooks get executed
-                    artifact['run_automation'] = True
+                    artifact["run_automation"] = True
 
                 ret_val, status_string, artifact_id = self.save_artifact(artifact)
-                self.debug_print(
-                    "save_artifact returns, value: {0}, reason: {1}, id: {2}".format(ret_val, status_string,
-                                                                                     artifact_id))
+                self.debug_print(f"save_artifact returns, value: {ret_val}, reason: {status_string}, id: {artifact_id}")
 
         return self.set_status(phantom.APP_SUCCESS)
 
@@ -548,7 +537,6 @@ class ArcsightConnector(BaseConnector):
         results = []
 
         for case_id in case_ids:
-
             case_act_res = ActionResult()
 
             ret_val, container, artifacts = self._get_case(case_id, case_act_res)
@@ -557,7 +545,7 @@ class ArcsightConnector(BaseConnector):
                 continue
 
             if container and artifacts:
-                results.append({'container': container, 'artifacts': artifacts})
+                results.append({"container": container, "artifacts": artifacts})
 
         self.send_progress("Done Processing Cases and Events")
 
@@ -580,7 +568,7 @@ class ArcsightConnector(BaseConnector):
 
         if container_id:
             case_ids = param[phantom.APP_JSON_CONTAINER_ID]
-            case_ids = case_ids.split(',')
+            case_ids = case_ids.split(",")
         else:
             ret_val, case_ids = self._get_all_case_ids(param, action_result)
             if phantom.is_fail(ret_val):
@@ -621,12 +609,9 @@ class ArcsightConnector(BaseConnector):
 
     def _get_group_details(self, group_uri, action_result):
 
-        endpoint = "{0}/getGroupByURI".format(ARCSIGHT_GROUPSERVICE_ENDPOINT)
+        endpoint = f"{ARCSIGHT_GROUPSERVICE_ENDPOINT}/getGroupByURI"
 
-        request_data = {
-            "gro.getGroupByURI": {
-                "gro.authToken": self._auth_token,
-                "gro.uri": group_uri}}
+        request_data = {"gro.getGroupByURI": {"gro.authToken": self._auth_token, "gro.uri": group_uri}}
 
         ret_val, resp = self._make_rest_call(endpoint, action_result, json=request_data, method="post")
 
@@ -634,7 +619,7 @@ class ArcsightConnector(BaseConnector):
             return phantom.APP_ERROR, {}
 
         try:
-            group_details = resp.get('gro.getGroupByURIResponse', {}).get('gro.return', {})
+            group_details = resp.get("gro.getGroupByURIResponse", {}).get("gro.return", {})
         except:
             group_details = {}
 
@@ -643,13 +628,11 @@ class ArcsightConnector(BaseConnector):
     def _get_child_id_by_name(self, parent_group_id, case_name, action_result):
 
         # Child not present, let's insert it
-        endpoint = "{0}/getChildIDByChildNameOrAlias".format(ARCSIGHT_GROUPSERVICE_ENDPOINT)
+        endpoint = f"{ARCSIGHT_GROUPSERVICE_ENDPOINT}/getChildIDByChildNameOrAlias"
 
         request_data = {
-            "gro.getChildIDByChildNameOrAlias": {
-                "gro.authToken": self._auth_token,
-                "gro.groupId": parent_group_id,
-                "gro.name": case_name}}
+            "gro.getChildIDByChildNameOrAlias": {"gro.authToken": self._auth_token, "gro.groupId": parent_group_id, "gro.name": case_name}
+        }
 
         ret_val, resp = self._make_rest_call(endpoint, action_result, json=request_data, method="post")
 
@@ -657,7 +640,7 @@ class ArcsightConnector(BaseConnector):
             return action_result.get_status(), None
 
         try:
-            case_id = resp.get('gro.getChildIDByChildNameOrAliasResponse', {}).get('gro.return', {})
+            case_id = resp.get("gro.getChildIDByChildNameOrAliasResponse", {}).get("gro.return", {})
         except:
             # If the case is not present, the response ....Response is not a dict
             case_id = None
@@ -676,10 +659,10 @@ class ArcsightConnector(BaseConnector):
 
         parent_group = param.get(ARCSIGHT_JSON_PARENT_GROUP, ARCSIGHT_DEFAULT_PARENT_GROUP)
 
-        if not parent_group.startswith('/'):
-            parent_group = f'/{parent_group}'
+        if not parent_group.startswith("/"):
+            parent_group = f"/{parent_group}"
 
-        parent_group = parent_group.rstrip('/')
+        parent_group = parent_group.rstrip("/")
 
         case_name = param[ARCSIGHT_JSON_CASE_NAME]
 
@@ -689,16 +672,15 @@ class ArcsightConnector(BaseConnector):
         if phantom.is_fail(ret_val):
             return action_result.get_status()
 
-        group_id = group_details.get('resourceid')
+        group_id = group_details.get("resourceid")
 
         if not group_id:
-            return action_result.set_status(phantom.APP_ERROR,
-                                            "Unable to get the group id of Group: '{0}'".format(parent_group))
+            return action_result.set_status(phantom.APP_ERROR, f"Unable to get the group id of Group: '{parent_group}'")
 
-        self.save_progress('Got parent group ID: {0}'.format(group_id))
+        self.save_progress(f"Got parent group ID: {group_id}")
 
         # init the summary as if the case was created
-        summary = action_result.set_summary({'case_created': True})
+        summary = action_result.set_summary({"case_created": True})
 
         # Try to see if there is already a case with that name
 
@@ -709,45 +691,41 @@ class ArcsightConnector(BaseConnector):
 
         if case_id:
             # Child is already present
-            summary['case_created'] = False
+            summary["case_created"] = False
             ret_val, case_details = self._get_case_details(case_id, action_result)
             if phantom.is_fail(ret_val):
                 action_result.append_to_message(ARCSIGHT_ERR_UNABLE_TO_GET_CASE_INFO)
                 return action_result.get_status()
-            case_id = case_details.get('resourceid')
+            case_id = case_details.get("resourceid")
 
             if case_id:
-                summary['case_id'] = case_id
+                summary["case_id"] = case_id
 
             action_result.add_data(case_details)
             return action_result.set_status(phantom.APP_SUCCESS, "Case already existed")
 
         # Child not present, let's insert it
-        endpoint = "{0}/insertResource".format(ARCSIGHT_CASESERVICE_ENDPOINT)
+        endpoint = f"{ARCSIGHT_CASESERVICE_ENDPOINT}/insertResource"
 
-        request_data = {
-            "cas.insertResource": {
-                "cas.authToken": self._auth_token,
-                "cas.resource": {'name': case_name},
-                "cas.parentId": group_id}}
+        request_data = {"cas.insertResource": {"cas.authToken": self._auth_token, "cas.resource": {"name": case_name}, "cas.parentId": group_id}}
 
         ret_val, resp = self._make_rest_call(endpoint, action_result, json=request_data, method="post")
 
         if phantom.is_fail(ret_val):
-            summary['case_created'] = False
+            summary["case_created"] = False
             return action_result.get_status()
 
-        summary['case_created'] = True
+        summary["case_created"] = True
 
         try:
-            case_details = resp.get('cas.insertResourceResponse', {}).get('cas.return', {})
+            case_details = resp.get("cas.insertResourceResponse", {}).get("cas.return", {})
         except:
             case_details = {}
 
-        case_id = case_details.get('resourceid')
+        case_id = case_details.get("resourceid")
 
         if case_id:
-            summary['case_id'] = case_id
+            summary["case_id"] = case_id
 
         action_result.add_data(case_details)
 
@@ -771,8 +749,7 @@ class ArcsightConnector(BaseConnector):
             update_fields = json.loads(update_fields)
         except Exception as e:
             error_msg = self._get_error_message_from_exception(e)
-            return action_result.set_status(phantom.APP_ERROR,
-                                            f"Unable to load the input 'update_fields' json. {error_msg}")
+            return action_result.set_status(phantom.APP_ERROR, f"Unable to load the input 'update_fields' json. {error_msg}")
 
         # Get the case info
         case_id = param[ARCSIGHT_JSON_CASE_ID]
@@ -785,12 +762,9 @@ class ArcsightConnector(BaseConnector):
         # update the dictionary that we got with the one that was inputted
         case_details.update(update_fields)
 
-        request_data = {
-            "cas.update": {
-                "cas.authToken": self._auth_token,
-                "cas.resource": case_details}}
+        request_data = {"cas.update": {"cas.authToken": self._auth_token, "cas.resource": case_details}}
 
-        endpoint = "{0}/update".format(ARCSIGHT_CASESERVICE_ENDPOINT)
+        endpoint = f"{ARCSIGHT_CASESERVICE_ENDPOINT}/update"
 
         ret_val, resp = self._make_rest_call(endpoint, action_result, json=request_data, method="post")
 
@@ -798,13 +772,13 @@ class ArcsightConnector(BaseConnector):
             return phantom.APP_ERROR, {}
 
         try:
-            case_details = resp.get('cas.updateResponse', {}).get('cas.return', {})
+            case_details = resp.get("cas.updateResponse", {}).get("cas.return", {})
         except:
             case_details = {}
 
         action_result.add_data(case_details)
 
-        action_result.update_summary({'case_id': case_details.get('resourceid')})
+        action_result.update_summary({"case_id": case_details.get("resourceid")})
 
         return action_result.set_status(phantom.APP_SUCCESS)
 
@@ -828,7 +802,7 @@ class ArcsightConnector(BaseConnector):
 
         action_result.add_data(case_details)
 
-        action_result.update_summary({'case_id': case_details.get('resourceid')})
+        action_result.update_summary({"case_id": case_details.get("resourceid")})
 
         return action_result.set_status(phantom.APP_SUCCESS)
 
@@ -846,8 +820,8 @@ class ArcsightConnector(BaseConnector):
 
         query_type = param.get(ARCSIGHT_JSON_TYPE, "all").lower()
 
-        if query_type != 'all':
-            query_string = "type:{0} and {1}".format(query_type, query_string)
+        if query_type != "all":
+            query_string = f"type:{query_type} and {query_string}"
 
         result_range = param.get(ARCSIGHT_JSON_RANGE, "0-10")
 
@@ -857,15 +831,17 @@ class ArcsightConnector(BaseConnector):
             return action_result.get_status()
 
         # Range
-        mini, maxi = (int(x) for x in result_range.split('-'))
+        mini, maxi = (int(x) for x in result_range.split("-"))
         request_data = {
             "mss.search": {
                 "mss.authToken": self._auth_token,
                 "mss.queryStr": query_string,
                 "mss.startPosition": mini,
-                "mss.pageSize": (maxi - mini) + 1}}
+                "mss.pageSize": (maxi - mini) + 1,
+            }
+        }
 
-        endpoint = "{0}/search".format(ARCSIGHT_MANAGERSEARCHSERVICE_ENDPOINT)
+        endpoint = f"{ARCSIGHT_MANAGERSEARCHSERVICE_ENDPOINT}/search"
 
         ret_val, resp = self._make_rest_call(endpoint, action_result, json=request_data, method="post")
 
@@ -873,21 +849,20 @@ class ArcsightConnector(BaseConnector):
             return phantom.APP_ERROR, {}
 
         try:
-            search_result = resp.get('mss.searchResponse', {}).get('mss.return', {})
+            search_result = resp.get("mss.searchResponse", {}).get("mss.return", {})
         except:
             search_result = {}
 
-        search_hits = search_result.get('searchHits', [])
+        search_hits = search_result.get("searchHits", [])
 
         if not isinstance(search_hits, list):
-            search_result['searchHits'] = [search_hits]
+            search_result["searchHits"] = [search_hits]
             # this variable is used downstream, so set it up again
-            search_hits = search_result.get('searchHits', [])
+            search_hits = search_result.get("searchHits", [])
 
         action_result.add_data(search_result)
 
-        action_result.update_summary(
-            {'total_items': search_result.get('hitCount'), 'total_items_returned': len(search_hits)})
+        action_result.update_summary({"total_items": search_result.get("hitCount"), "total_items_returned": len(search_hits)})
 
         return action_result.set_status(phantom.APP_SUCCESS)
 
@@ -916,8 +891,9 @@ class ArcsightConnector(BaseConnector):
 
 
 def main():
-    import pudb
     import argparse
+
+    import pudb
 
     pudb.set_trace()
 
