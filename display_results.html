@@ -87,7 +87,7 @@ File: display_results.html
       <td>
         {% if result.param.query %}
           <a href="javascript:;"
-            onclick="context_menu(this, [{'contains': ['arcsight search string'], 'value': '{{ result.param.query }}' }], 0, {{ container.id }}, null, false);">
+            onclick="context_menu(this, [{'contains': ['arcsight search string'], 'value': '{{ result.param.query|escapejs }}' }], 0, {{ container.id }}, null, false);">
             {{ result.param.query }}
             &nbsp;<span class="fa fa-caret-down" style="font-size: smaller;"></span>
           </a>
@@ -144,13 +144,13 @@ File: display_results.html
       <td>
         {% if 'All_Cases' in curr_entry.uri %}
         <a href="javascript:;"
-          onclick="context_menu(this, [{'contains': [ 'arcsight case id' ], 'value': '{{ curr_entry.uuid }}' }], 0, {{ container.id }}, null, false);">
+          onclick="context_menu(this, [{'contains': [ 'arcsight case id' ], 'value': '{{ curr_entry.uuid|escapejs }}' }], 0, {{ container.id }}, null, false);">
           {{ curr_entry.uuid }}
           &nbsp;<span class="fa fa-caret-down" style="font-size: smaller;"></span>
         </a>
         {% else %}
         <a href="javascript:;"
-          onclick="context_menu(this, [{'contains': [ 'arcsight resource id' ], 'value': '{{ curr_entry.uuid }}' }], 0, {{ container.id }}, null, false);">
+          onclick="context_menu(this, [{'contains': [ 'arcsight resource id' ], 'value': '{{ curr_entry.uuid|escapejs }}' }], 0, {{ container.id }}, null, false);">
           {{ curr_entry.uuid }}
           &nbsp;<span class="fa fa-caret-down" style="font-size: smaller;"></span>
         </a>

@@ -1,0 +1,1 @@
+- Escape dynamic ArcSight values embedded in widget JavaScript.
