@@ -1,0 +1,5 @@
+**Unreleased**
+
+* Escape dynamic ArcSight values embedded in widget JavaScript.
+* Verify ArcSight server TLS certificates by default for newly configured assets.
+* Added Python 3.13 support and raised the minimum supported SOAR version to 6.3.0.

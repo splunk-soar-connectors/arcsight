@@ -1,5 +1,5 @@
 # File: arcsight_consts.py
-# Copyright (c) 2017-2021 Splunk Inc.
+# Copyright (c) 2017-2026 Splunk Inc.
 #
 # Licensed under Apache 2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
 #
@@ -16,7 +16,7 @@ ARCSIGHT_JSON_CASE_NAME = "name"
 ARCSIGHT_JSON_CASE_ID = "id"
 ARCSIGHT_JSON_PARENT_GROUP = "parent_group"
 ARCSIGHT_JSON_USERNAME = "username"
-ARCSIGHT_JSON_PASSWORD = "password"
+ARCSIGHT_JSON_PASSWORD = "password"  # pragma: allowlist secret
 ARCSIGHT_JSON_UPDATE_FIELDS = "update_fields"
 ARCSIGHT_JSON_QUERY = "query"
 ARCSIGHT_JSON_TYPE = "type"
