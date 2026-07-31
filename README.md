@@ -1,7 +1,7 @@
 # ArcSight ESM
 
 Publisher: Splunk Community <br>
-Connector Version: 2.0.0 <br>
+Connector Version: 3.0.0 <br>
 Product Vendor: HPE <br>
 Product Name: ArcSight ESM <br>
 Minimum Product Version: 6.3.0
